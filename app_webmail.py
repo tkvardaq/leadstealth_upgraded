@@ -9,6 +9,11 @@ import subprocess
 import sys
 import os
 import time
+
+# ── Heartbeat (visible in console logs) ────────────────────────
+print(f"[LeadStealth] Process started at {time.ctime()}")
+print(f"[LeadStealth] Python Version: {sys.version}")
+print(f"[LeadStealth] Project Root: {os.getcwd()}")
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
@@ -37,15 +42,19 @@ is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get
 
 def check_browser_install():
     """Ensure browsers are installed, but only show UI if actually installing"""
-    marker_file = Path.home() / ".playwright_installed"
+    # Use /tmp as it is guaranteed writeable on Streamlit Cloud
+    marker_file = Path("/tmp/.playwright_installed")
+    st.write(f"🔍 System Check: {marker_file}")
+    
     if is_cloud:
         if not marker_file.exists():
-            with st.status("🔧 Preparing browser engines (first-time)..."):
-                st.write("Checking Playwright dependencies...")
+            with st.status("🔧 Preparing browser engines (one-time setup)..."):
+                st.write("Installing Playwright Chromium... this may take 1-2 mins.")
                 install_playwright()
                 st.write("✓ Setup complete!")
         else:
-            # Silent check (fast)
+            st.write("✓ Browsers already configured.")
+            # Fast check
             install_playwright()
     else:
         install_playwright()

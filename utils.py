@@ -8,8 +8,8 @@ def install_playwright():
     Install Playwright browsers if they are missing.
     Used for Streamlit Cloud and local first-time setup.
     """
-    # Use a marker in home directory to avoid repeated checks
-    marker = Path.home() / ".playwright_installed"
+    # Use a marker in /tmp directory to avoid repeated checks (guaranteed writeable)
+    marker = Path("/tmp/.playwright_installed")
     
     # Also check if it's already installed in common locations to be extra sure
     if not marker.exists():
