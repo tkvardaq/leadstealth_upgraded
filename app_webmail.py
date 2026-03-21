@@ -19,31 +19,47 @@ sys.path.insert(0, str(Path(__file__).parent))
 from webmail.sender import WebmailSender, WebmailAccount, WebmailTemplateLibrary
 
 
+# ── Page Config (MUST BE FIRST) ──────────────────────────────
+st.set_page_config(
+    page_title="LeadStealth Webmail Edition",
+    page_icon="📧",
+    layout="wide"
+)
+
+st.write("🔄 Initializing LeadStealth...")
+
 # ── Streamlit Cloud Prep ──────────────────────────────────────
 
 from utils import install_playwright
-import streamlit as st
 
-# ── Streamlit Cloud Prep ──────────────────────────────────────
 # Run installation check immediately on startup
 is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get("STREAMLIT_CLOUD_ID") is not None
-if is_cloud:
-    from pathlib import Path
-    if not (Path.home() / ".playwright_installed").exists():
-        with st.spinner("🔧 First-time setup: Installing browser engines (Chromium)..."):
+
+def check_browser_install():
+    """Ensure browsers are installed, but only show UI if actually installing"""
+    marker_file = Path.home() / ".playwright_installed"
+    if is_cloud:
+        if not marker_file.exists():
+            with st.status("🔧 Preparing browser engines (first-time)..."):
+                st.write("Checking Playwright dependencies...")
+                install_playwright()
+                st.write("✓ Setup complete!")
+        else:
+            # Silent check (fast)
             install_playwright()
-            st.success("✓ Browser engines ready!")
     else:
-        install_playwright() # Fast check
-else:
-    install_playwright()
+        install_playwright()
 
+check_browser_install()
+st.write("✅ Environment Ready")
 
-# ── Database Functions (defined BEFORE session state) ─────────
+# ── Database Functions ─────────────────────────────────────────
 
 from database_manager import DatabaseManager
 
+st.write("📦 Connecting to Database Manager...")
 db = DatabaseManager()
+st.write("✅ Database Ready")
 
 def load_leads():
     """Load leads from DB manager"""
@@ -55,12 +71,7 @@ def save_leads(df):
     db.save_leads(df)
 
 
-# ── Page Config ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="LeadStealth Webmail Edition",
-    page_icon="🕵️",
-    layout="wide",
-)
+# ── Initialization ───────────────────────────────────────────
 
 # ── Session State ────────────────────────────────────────────
 if "scanning" not in st.session_state:
