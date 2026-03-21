@@ -1,0 +1,18 @@
+# LeadStealth Webmail Edition - Free Version
+# Uses your hosting provider's webmail instead of paid SMTP
+
+# Core
+streamlit>=1.31.0
+playwright>=1.41.0
+playwright-stealth>=1.0.6
+beautifulsoup4>=4.12.3
+requests>=2.31.0
+pandas>=2.2.0
+
+# Email validation
+email-validator>=2.1.0
+jinja2>=3.1.3
+
+# Async support
+asyncio-mqtt>=0.13.0
+aiofiles>=23.2.0
