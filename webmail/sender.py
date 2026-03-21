@@ -14,6 +14,10 @@ from jinja2 import Template
 import re
 import json
 from pathlib import Path
+import sys
+import os
+
+from utils import install_playwright
 
 
 @dataclass
@@ -120,6 +124,7 @@ class WebmailSender:
     
     async def start(self):
         """Start browser"""
+        install_playwright()
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=self.headless,

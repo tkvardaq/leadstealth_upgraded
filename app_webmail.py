@@ -19,6 +19,26 @@ sys.path.insert(0, str(Path(__file__).parent))
 from webmail.sender import WebmailSender, WebmailAccount, WebmailTemplateLibrary
 
 
+# ── Streamlit Cloud Prep ──────────────────────────────────────
+
+from utils import install_playwright
+import streamlit as st
+
+# ── Streamlit Cloud Prep ──────────────────────────────────────
+# Run installation check immediately on startup
+is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get("STREAMLIT_CLOUD_ID") is not None
+if is_cloud:
+    from pathlib import Path
+    if not (Path.home() / ".playwright_installed").exists():
+        with st.spinner("🔧 First-time setup: Installing browser engines (Chromium)..."):
+            install_playwright()
+            st.success("✓ Browser engines ready!")
+    else:
+        install_playwright() # Fast check
+else:
+    install_playwright()
+
+
 # ── Database Functions (defined BEFORE session state) ─────────
 
 def load_leads():
@@ -144,6 +164,9 @@ with tab1:
         location = st.text_input("Location", value="Austin, TX",
             help="City, State or full address")
     
+    if os.environ.get("STREAMLIT_SERVER_PORT"):
+        st.warning("⚠️ **Note**: Data saved to CSV is ephemeral on Streamlit Cloud and will be lost if the app restarts.")
+    
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
         sources = st.multiselect("Sources", 
@@ -154,8 +177,15 @@ with tab1:
         max_leads = st.number_input("Max Leads", value=50, min_value=10, max_value=500,
             help="Stop after collecting this many leads")
     with col3:
-        headful = st.checkbox("Show Browser", value=True,
-            help="Keep browser visible to solve CAPTCHAs manually")
+        # Detect cloud to force headless
+        is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get("STREAMLIT_CLOUD_ID") is not None
+        if is_cloud:
+            headful = st.checkbox("Show Browser (Local Only)", value=False, disabled=True,
+                help="Visible browser windows are NOT supported in the cloud. Headless mode forced.")
+            headful = False # Force false regardless of checkbox if on cloud
+        else:
+            headful = st.checkbox("Show Browser", value=True,
+                help="Keep browser visible to solve CAPTCHAs manually (Local only)")
     
     # Start scraping
     if st.session_state.scanning:
@@ -351,7 +381,8 @@ with tab2:
                 status_text = st.empty()
                 
                 async def run_campaign():
-                    sender = WebmailSender(headless=False)  # Show browser so user can see
+                    # Set headless based on the UI checkbox (forced False on Cloud)
+                    sender = WebmailSender(headless=not headful) 
                     await sender.start()
                     
                     # Add all accounts

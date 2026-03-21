@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 import re
 from urllib.parse import urljoin, urlparse
 import urllib.parse
+from utils import install_playwright
 
 class LeadScraper:
     def __init__(self, headful=False):
@@ -17,6 +18,8 @@ class LeadScraper:
         self.enrich_page = None
 
     def start_browser(self):
+        # Ensure browsers are installed
+        install_playwright()
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(headless=not self.headful)
         self.context = self.browser.new_context(
