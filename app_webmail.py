@@ -21,8 +21,27 @@ import json
 # Add our modules to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get("STREAMLIT_CLOUD_ID") is not None
+
 from webmail.sender import WebmailSender, WebmailAccount, WebmailTemplateLibrary
 
+def check_browser_install():
+    """Ensure browsers are installed. Returns True if ready."""
+    marker_file = Path("/tmp/.playwright_installed")
+    if is_cloud:
+        if not marker_file.exists():
+            # We will show this in the UI when the user tries to run a task
+            return False
+        return True
+    return True
+
+# ── Database Functions ─────────────────────────────────────────
+
+from database_manager import DatabaseManager
+
+@st.cache_resource
+def get_db():
+    return DatabaseManager()
 
 # ── Page Config (MUST BE FIRST) ──────────────────────────────
 st.set_page_config(
@@ -31,44 +50,38 @@ st.set_page_config(
     layout="wide"
 )
 
-st.write("🔄 Initializing LeadStealth...")
+# ── Initialization ───────────────────────────────────────────
+if "db_initialized" not in st.session_state:
+    st.session_state.db_initialized = False
+    st.session_state.browsers_installed = check_browser_install()
 
-# ── Streamlit Cloud Prep ──────────────────────────────────────
-
-from utils import install_playwright
-
-# Run installation check immediately on startup
-is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None or os.environ.get("STREAMLIT_CLOUD_ID") is not None
-
-def check_browser_install():
-    """Ensure browsers are installed, but only show UI if actually installing"""
-    # Use /tmp as it is guaranteed writeable on Streamlit Cloud
-    marker_file = Path("/tmp/.playwright_installed")
-    st.write(f"🔍 System Check: {marker_file}")
+# ── Sidebar Setup ─────────────────────────────────────────────
+with st.sidebar:
+    st.title("🛡️ LeadStealth")
+    st.write("Webmail Edition v2.1")
     
     if is_cloud:
-        if not marker_file.exists():
-            with st.status("🔧 Preparing browser engines (one-time setup)..."):
-                st.write("Installing Playwright Chromium... this may take 1-2 mins.")
-                install_playwright()
-                st.write("✓ Setup complete!")
+        if not st.session_state.browsers_installed:
+            if st.button("🚀 Complete First-Time Setup", help="Installs browser engines (approx 1 min)"):
+                with st.status("🔧 Preparing browser engines..."):
+                    from utils import install_playwright
+                    install_playwright()
+                    st.session_state.browsers_installed = True
+                    st.success("✅ Setup complete! You can now start.")
+                    st.rerun()
         else:
-            st.write("✓ Browsers already configured.")
-            # Fast check
-            install_playwright()
+            st.success("✅ Browser Engines Ready")
+    
+    st.divider()
+    
+    # Progress UI
+    if not st.session_state.db_initialized:
+        with st.status("📦 Connecting to storage..."):
+            db = get_db()
+            st.session_state.db_initialized = True
+            st.rerun()
     else:
-        install_playwright()
-
-check_browser_install()
-st.write("✅ Environment Ready")
-
-# ── Database Functions ─────────────────────────────────────────
-
-from database_manager import DatabaseManager
-
-st.write("📦 Connecting to Database Manager...")
-db = DatabaseManager()
-st.write("✅ Database Ready")
+        db = get_db()
 
 def load_leads():
     """Load leads from DB manager"""
