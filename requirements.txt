@@ -4,12 +4,13 @@ playwright>=1.41.0
 playwright-stealth>=1.0.6
 beautifulsoup4>=4.12.3
 requests>=2.31.0
-pandas>=2.2.0
+pandas==2.2.1
 pydantic>=2.6.0
 python-dotenv>=1.0.0
 
 # Database
-sqlalchemy>=2.0.0
+supabase==2.4.3
+sqlalchemy==2.0.29
 
 # Email Infrastructure
 aiosmtplib>=3.0.0

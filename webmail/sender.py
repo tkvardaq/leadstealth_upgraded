@@ -349,136 +349,142 @@ class WebmailSender:
                 return {'success': False, 'error': f'Failed to login to {account.email}'}
         
         try:
-            print(f"[Webmail] Composing email to {to_email}...")
+            print(f"[Webmail] 📝 Preparing email for {to_email}...")
             
-            # Click compose
+            # 1. Click Compose
             compose_selectors = [
-                '#rcmbtn_compose',
-                'a.compose',
-                'button.compose',
-                'a:has-text("Compose")',
-                'a[href*="compose"]'
+                 '#rcmbtn_compose', 'a.compose', 'button.compose',
+                'a:has-text("Compose")', 'a[href*="compose"]', '.button-compose'
             ]
             
+            composed = False
             for sel in compose_selectors:
                 try:
-                    if await self.page.is_visible(sel, timeout=2000):
+                    if await self.page.is_visible(sel, timeout=3000):
                         await self.page.click(sel)
+                        composed = True
                         break
-                except:
-                    continue
+                except: continue
+            
+            if not composed:
+                print("[Webmail] ⚠️ Compose button not found, maybe already in compose view?")
             
             await asyncio.sleep(random.uniform(2, 4))
             
-            # Fill To field
+            # 2. Fill To field
             to_selectors = [
-                'input[name="_to"]',
-                '#_to',
-                'input[placeholder*="To" i]',
-                '.input-to input'
+                'input[name="_to"]', '#_to', 'input[placeholder*="To" i]', 
+                '.input-to input', '#compose_to'
             ]
             
+            filled_to = False
             for sel in to_selectors:
                 try:
-                    if await self.page.is_visible(sel, timeout=2000):
+                    if await self.page.is_visible(sel, timeout=3000):
                         await self.page.fill(sel, to_email)
+                        filled_to = True
                         break
-                except:
-                    continue
+                except: continue
             
-            await asyncio.sleep(random.uniform(1, 2))
+            if not filled_to:
+                print(f"[Webmail] ❌ Error: 'To' field not found for {to_email}")
+                return {'success': False, 'error': "Could not find 'To' field"}
             
-            # Fill Subject
-            subj_selectors = [
-                'input[name="_subject"]',
-                '#_subject',
-                'input[placeholder*="Subject" i]'
-            ]
-            
+            # 3. Fill Subject
+            subj_selectors = ['input[name="_subject"]', '#_subject', 'input[placeholder*="Subject" i]', '#compose_subject']
             for sel in subj_selectors:
                 try:
                     if await self.page.is_visible(sel, timeout=2000):
                         await self.page.fill(sel, subject)
                         break
-                except:
-                    continue
+                except: continue
             
             await asyncio.sleep(random.uniform(1, 2))
             
-            # Fill body
+            # 4. Fill Body
             body_text = body_text or self._html_to_text(body_html)
             
-            body_selectors = [
-                'textarea[name="_message"]',
-                '#composebody',
-                '.mceEditor textarea',
-                '[contenteditable="true"]'
-            ]
+            # Check for iframe first (Roundcube often uses TinyMCE in iframe)
+            filled_body = False
+            try:
+                iframes = self.page.frames
+                for frame in iframes:
+                    if "tiny" in frame.name.lower() or "compose" in frame.name.lower():
+                        body_sel = 'body#tinymce, body.mce-content-body, body'
+                        if await frame.is_visible(body_sel, timeout=2000):
+                            await frame.fill(body_sel, body_text)
+                            filled_body = True
+                            print("[Webmail] Filled body via iframe")
+                            break
+            except: pass
             
-            for sel in body_selectors:
-                try:
-                    if await self.page.is_visible(sel, timeout=2000):
-                        await self.page.fill(sel, body_text)
-                        break
-                except:
-                    continue
+            if not filled_body:
+                body_selectors = ['textarea[name="_message"]', '#composebody', '.mceEditor textarea', '[contenteditable="true"]']
+                for sel in body_selectors:
+                    try:
+                        if await self.page.is_visible(sel, timeout=2000):
+                            await self.page.fill(sel, body_text)
+                            filled_body = True
+                            break
+                    except: continue
+            
+            if not filled_body:
+                print("[Webmail] ⚠️ Warning: Body field not found, continuing anyway...")
             
             await asyncio.sleep(random.uniform(1, 3))
             
-            # Click Send
+            # 5. Click Send
             send_selectors = [
-                'button[name="_send"]',
-                'input[name="_send"]',
-                'button.send',
-                '#rcmbtn_send',
-                'button:has-text("Send")'
+                'button[name="_send"]', 'input[name="_send"]', 'button.send', 
+                '#rcmbtn_send', 'button:has-text("Send")', '.button-send'
             ]
             
+            sent_clicked = False
             for sel in send_selectors:
                 try:
-                    if await self.page.is_visible(sel, timeout=2000):
+                    if await self.page.is_visible(sel, timeout=3000):
                         await self.page.click(sel)
+                        sent_clicked = True
                         break
-                except:
-                    continue
+                except: continue
             
-            # Wait for send confirmation
-            await asyncio.sleep(random.uniform(3, 5))
+            if not sent_clicked:
+                print(f"[Webmail] ❌ Error: Send button not found for {to_email}")
+                return {'success': False, 'error': "Send button not found"}
             
-            # Check for success
+            # 6. Wait for send confirmation
+            print("[Webmail] ⏳ Waiting for confirmation...")
+            await asyncio.sleep(random.uniform(4, 7))
+            
+            # Check for success indicators
             success = False
             success_indicators = [
-                '.confirmation',
-                '.success',
-                '.alert-success',
-                'text=Message sent',
-                'text=Email sent'
+                '.confirmation', '.success', '.alert-success', 
+                'text=Message sent', 'text=Email sent', '.messagemanager .success'
             ]
             
             for indicator in success_indicators:
                 try:
-                    if await self.page.is_visible(indicator, timeout=3000):
+                    if await self.page.is_visible(indicator, timeout=4000):
                         success = True
                         break
-                except:
-                    continue
+                except: continue
             
-            # Also consider success if send buttons vanished
+            # If no confirmation, check if we are still on the compose page
             if not success:
-               try:
-                   send_visible = await self.page.is_visible(send_selectors[0], timeout=1000)
-                   if not send_visible:
-                       success = True
-               except:
-                   success = True
-            
+                try:
+                    is_still_composing = await self.page.is_visible(send_selectors[0], timeout=1000)
+                    if not is_still_composing:
+                        # If send button is gone and no error is obvious, assume success
+                        success = True
+                        print("[Webmail] Confirmation not seen but send button vanished - assuming success.")
+                except:
+                    success = True
             
             if success:
-                # Update counters
                 self.current_account.sent_today += 1
                 self.current_account.sent_this_hour += 1
-                
-                print(f"[Webmail] ✓ Sent to {to_email}")
+                print(f"[Webmail] ✅ Successfully sent to {to_email}")
                 return {
                     'success': True,
                     'from': self.current_account.email,
@@ -486,10 +492,11 @@ class WebmailSender:
                     'sent_at': datetime.now().isoformat()
                 }
             else:
+                print(f"[Webmail] ❌ Failed to confirm send to {to_email}")
                 return {'success': False, 'error': 'Send confirmation not detected'}
                 
         except Exception as e:
-            print(f"[Webmail] Send error: {e}")
+            print(f"[Webmail] ❌ Send error for {to_email}: {e}")
             return {'success': False, 'error': str(e)}
     
     async def send_campaign(

@@ -41,29 +41,18 @@ else:
 
 # ── Database Functions (defined BEFORE session state) ─────────
 
+from database_manager import DatabaseManager
+
+db = DatabaseManager()
+
 def load_leads():
-    """Load leads from CSV"""
-    csv_file = 'leads.db.csv'
-    expected_cols = [
-            'id', 'name', 'source', 'website', 'phone', 'email',
-            'facebook', 'instagram', 'linkedin',
-            'address', 'rating', 'reviews', 'category',
-            'campaign_status', 'last_contact', 'contact_count',
-            'created_at', 'session_id', 'session_name', 'follow_up_date'
-    ]
-    if os.path.exists(csv_file):
-        df = pd.read_csv(csv_file)
-        for col in expected_cols:
-            if col not in df.columns:
-                df[col] = None
-        return df
-    else:
-        return pd.DataFrame(columns=expected_cols)
+    """Load leads from DB manager"""
+    return db.load_leads()
 
 
 def save_leads(df):
-    """Save leads to CSV"""
-    df.to_csv('leads.db.csv', index=False)
+    """Save leads to DB manager"""
+    db.save_leads(df)
 
 
 # ── Page Config ──────────────────────────────────────────────
@@ -164,8 +153,21 @@ with tab1:
         location = st.text_input("Location", value="Austin, TX",
             help="City, State or full address")
     
-    if os.environ.get("STREAMLIT_SERVER_PORT"):
-        st.warning("⚠️ **Note**: Data saved to CSV is ephemeral on Streamlit Cloud and will be lost if the app restarts.")
+    if not db.use_supabase:
+        st.warning("⚠️ **Warning: Local Storage Active**\n\nData will be lost when the app sleeps or restarts on Streamlit Cloud. Connect **Supabase** for permanent storage.")
+        with st.expander("🛠️ How to connect Supabase (Fix Data Loss)"):
+            st.markdown("""
+            1. Create a free project at [supabase.com](https://supabase.com)
+            2. Run the SQL script I provided in their **SQL Editor**.
+            3. Go to **Settings > API** to get your URL and Anon Key.
+            4. In Streamlit Cloud, go to **Settings > Secrets** and add:
+            ```toml
+            SUPABASE_URL = "your-url"
+            SUPABASE_KEY = "your-anon-key"
+            ```
+            """)
+    else:
+        st.success("☁️ **Supabase Connected**: Your data is safe and persistent!")
     
     col1, col2, col3 = st.columns([2, 2, 2])
     with col1:
