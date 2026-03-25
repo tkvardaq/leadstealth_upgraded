@@ -1,0 +1,26 @@
+[
+  {
+    "session_id": "20260326000623",
+    "session_name": "Plumbers in Austin, TX",
+    "date": "2026-03-26T00:06:23.633967",
+    "query": "Plumbers",
+    "location": "Austin, TX",
+    "sources": "google_maps",
+    "leads_found": 0,
+    "total_leads": 116,
+    "emails_found": 41,
+    "websites_found": 108
+  },
+  {
+    "session_id": "20260326002004",
+    "session_name": "Plumbers in Austin, TX",
+    "date": "2026-03-26T00:20:04.820061",
+    "query": "Plumbers",
+    "location": "Austin, TX",
+    "sources": "yellowpages",
+    "leads_found": 0,
+    "total_leads": 116,
+    "emails_found": 41,
+    "websites_found": 108
+  }
+]
