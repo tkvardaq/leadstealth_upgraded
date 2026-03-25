@@ -1,44 +1,81 @@
 """
 Standalone CLI script to run the scraper as a separate process.
-This avoids the Windows asyncio threading issue where Playwright's
-sync_playwright() fails with NotImplementedError inside a thread.
 """
+
 import argparse
 import sys
 import traceback
+from datetime import datetime
 from scraper import LeadScraper
 from processor import process_leads
-from db import load_leads, save_leads
+from db import load_leads, save_leads, save_session
 
 
 def main():
     parser = argparse.ArgumentParser(description="LeadStealth Scraper CLI")
     parser.add_argument("--query", required=True, help="Niche / Category")
     parser.add_argument("--location", required=True, help="Location")
-    parser.add_argument("--headful", action="store_true", help="Show browser")
+    parser.add_argument("--sources", default="google_maps,yellowpages,yelp")
+    parser.add_argument("--headful", action="store_true")
     args = parser.parse_args()
 
-    leads_df = load_leads()
+    leads_before = load_leads()
+    count_before = len(leads_before)
     scraper = LeadScraper(headful=args.headful)
+    sources = [s.strip().lower() for s in args.sources.split(",")]
 
     try:
-        # ── Phase 1: Google Maps ──────────────────────────
-        print("STATUS:Searching Google Maps...", flush=True)
-        maps_generator = scraper.search_google_maps(args.query, args.location)
-        print("STATUS:Extracting and enriching Google Maps leads...", flush=True)
-        leads_df = process_leads(leads_df, maps_generator, scraper)
+        leads_df = leads_before
 
-        # ── Phase 2: Yellow Pages (multi-page) ────────────
-        print("STATUS:Searching Yellow Pages...", flush=True)
-        yp_generator = scraper.search_yellowpages(args.query, args.location)
-        print("STATUS:Extracting and enriching Yellow Pages leads...", flush=True)
-        leads_df = process_leads(leads_df, yp_generator, scraper)
+        if "google_maps" in sources:
+            print("STATUS:Searching Google Maps...", flush=True)
+            leads_df = process_leads(
+                leads_df, scraper.search_google_maps(args.query, args.location), scraper
+            )
+
+        if "yellowpages" in sources:
+            print("STATUS:Searching Yellow Pages...", flush=True)
+            leads_df = process_leads(
+                leads_df, scraper.search_yellowpages(args.query, args.location), scraper
+            )
+
+        if "yelp" in sources:
+            print("STATUS:Searching Yelp...", flush=True)
+            leads_df = process_leads(
+                leads_df, scraper.search_yelp(args.query, args.location), scraper
+            )
 
         total = len(leads_df)
-        with_email = leads_df['email'].notna().sum() if 'email' in leads_df.columns else 0
-        with_site = leads_df['website'].notna().sum() if 'website' in leads_df.columns else 0
-        
-        print(f"STATUS:Done — {total} leads, {with_email} emails, {with_site} websites", flush=True)
+        new_leads = total - count_before
+        with_email = (
+            int(leads_df["email"].notna().sum()) if "email" in leads_df.columns else 0
+        )
+        with_site = (
+            int(leads_df["website"].notna().sum())
+            if "website" in leads_df.columns
+            else 0
+        )
+
+        # Save session history
+        save_session(
+            {
+                "session_id": datetime.now().strftime("%Y%m%d%H%M%S"),
+                "session_name": f"{args.query} in {args.location}",
+                "date": datetime.now().isoformat(),
+                "query": args.query,
+                "location": args.location,
+                "sources": ", ".join(sources),
+                "leads_found": new_leads,
+                "total_leads": total,
+                "emails_found": with_email,
+                "websites_found": with_site,
+            }
+        )
+
+        print(
+            f"STATUS:Done — {new_leads} new leads ({total} total), {with_email} emails",
+            flush=True,
+        )
 
     except Exception as e:
         traceback.print_exc()

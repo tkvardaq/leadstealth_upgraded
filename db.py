@@ -1,102 +1,158 @@
 import pandas as pd
 import os
+import json
 from datetime import datetime
+from pathlib import Path
 
-CSV_FILE = 'leads.db.csv' # using .db.csv to denote its role as our database
+# Use absolute path based on project root so it works regardless of CWD
+_PROJECT_DIR = Path(__file__).parent.resolve()
+CSV_FILE = str(_PROJECT_DIR / "leads.db.csv")
+SESSIONS_FILE = str(_PROJECT_DIR / "sessions.db.json")
 
 COLUMNS = [
-    'id', 'name', 'source', 'website', 'phone', 'email',
-    'facebook', 'instagram', 'linkedin',
-    'pagespeed_mobile', 'pagespeed_desktop',
-    'created_at', 'updated_at'
+    "id",
+    "name",
+    "source",
+    "website",
+    "phone",
+    "email",
+    "address",
+    "city",
+    "state",
+    "zip_code",
+    "category",
+    "rating",
+    "reviews",
+    "facebook",
+    "instagram",
+    "linkedin",
+    "twitter",
+    "youtube",
+    "hours",
+    "description",
+    "yelp_url",
+    "campaign_status",
+    "last_contact",
+    "contact_count",
+    "session_id",
+    "session_name",
+    "created_at",
+    "updated_at",
 ]
 
+
 def load_leads():
-    """Loads leads from CSV if it exists, otherwise returns an empty DataFrame."""
     if os.path.exists(CSV_FILE):
         df = pd.read_csv(CSV_FILE)
-        # Ensure all expected columns exist
         for col in COLUMNS:
             if col not in df.columns:
                 df[col] = None
         return df
-    else:
-        return pd.DataFrame(columns=COLUMNS)
+    return pd.DataFrame(columns=COLUMNS)
+
 
 def save_leads(df):
-    """Saves the DataFrame to CSV."""
     if df is not None:
-        print(f"  Saving {len(df)} leads to {CSV_FILE}")
         df.to_csv(CSV_FILE, index=False)
-    else:
-        print("  WARNING: Attempted to save None as leads.")
+
 
 def check_business_exists(df, name, website):
-    """Checks if a business already exists based on name or website."""
     if df.empty:
         return False
-    
-    # Check by name (case-insensitive) or website
-    name_match = df['name'].str.lower() == str(name).lower() if name else False
-    website_match = df['website'] == website if website else False
-    
+    name_match = df["name"].str.lower() == str(name).lower() if name else False
+    website_match = df["website"] == website if website else False
     return df[name_match | website_match].shape[0] > 0
 
+
 def has_email(df, name, website):
-    """Checks if an existing business has an email address."""
     if df.empty:
         return False
-        
-    name_match = df['name'].str.lower() == str(name).lower() if name else False
-    website_match = df['website'] == website if website else False
-    
+    name_match = df["name"].str.lower() == str(name).lower() if name else False
+    website_match = df["website"] == website if website else False
     match = df[name_match | website_match]
     if not match.empty:
-        if 'email' not in df.columns:
-            return False
-        email = match.iloc[0].get('email', None)
+        email = match.iloc[0].get("email", None)
         return pd.notna(email) and str(email).strip() != ""
     return False
 
-def add_or_update_lead(df, lead_data):
-    """Adds a new lead or updates an existing one if it was missing info."""
-    now = datetime.now().isoformat()
-    
-    # Ensure DataFrame has columns
-    if df.columns.empty or not all(col in df.columns for col in COLUMNS):
-        df = pd.DataFrame(columns=COLUMNS)
 
-    name = lead_data.get('name')
-    website = lead_data.get('website')
-    
-    # Find match
+def add_or_update_lead(df, lead_data):
+    now = datetime.now().isoformat()
+    if df.columns.empty:
+        df = pd.DataFrame(columns=COLUMNS)
+    for col in COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+
+    name = lead_data.get("name")
+    website = lead_data.get("website")
+
     match_mask = pd.Series([False] * len(df))
     if not df.empty:
         if name:
-            match_mask |= (df['name'].str.lower() == str(name).lower())
+            match_mask |= df["name"].str.lower() == str(name).lower()
         if website:
-            match_mask |= (df['website'] == website)
-    
+            match_mask |= df["website"] == website
+
     match_idx = df.index[match_mask].tolist()
 
     if match_idx:
-        # Update existing
         idx = match_idx[0]
-        # Only update missing or improved info
         for key in COLUMNS:
             new_val = lead_data.get(key)
             if pd.notna(new_val) and str(new_val).strip() != "":
-                # Don't overwrite existing email if new is empty
                 df.at[idx, key] = new_val
-        df.at[idx, 'updated_at'] = now
+        df.at[idx, "updated_at"] = now
     else:
-        # Add new
-        new_row_data = {col: lead_data.get(col) for col in COLUMNS}
-        new_id = df['id'].max() + 1 if not df.empty and not pd.isna(df['id'].max()) else 1
-        new_row_data['id'] = new_id
-        new_row_data['created_at'] = now
-        new_row_data['updated_at'] = now
-        
-        df = pd.concat([df, pd.DataFrame([new_row_data])], ignore_index=True)
-        
+        new_row = {col: lead_data.get(col) for col in COLUMNS}
+        new_id = df["id"].max() + 1 if not df.empty and pd.notna(df["id"].max()) else 1
+        new_row["id"] = new_id
+        new_row["created_at"] = now
+        new_row["updated_at"] = now
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
     return df
+
+
+# ── Session / Campaign History ───────────────────────────────
+
+
+def load_sessions():
+    """Load all past campaign sessions."""
+    if os.path.exists(SESSIONS_FILE):
+        try:
+            with open(SESSIONS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+
+def save_session(session_data):
+    """Append a new campaign session to history."""
+    sessions = load_sessions()
+    sessions.append(session_data)
+    with open(SESSIONS_FILE, "w") as f:
+        json.dump(sessions, f, indent=2, default=str)
+
+
+def get_sessions_df():
+    """Return sessions as a DataFrame for display."""
+    sessions = load_sessions()
+    if not sessions:
+        return pd.DataFrame(
+            columns=[
+                "session_id",
+                "session_name",
+                "date",
+                "sources",
+                "leads_found",
+                "emails_found",
+                "websites_found",
+                "emails_sent",
+                "emails_failed",
+                "query",
+                "location",
+            ]
+        )
+    return pd.DataFrame(sessions)
