@@ -703,6 +703,7 @@ with tab3:
                     "category": st.column_config.TextColumn("Category"),
                     "hours": st.column_config.TextColumn("Hours"),
                 },
+                width="stretch",
             )
 
         with analytics_tabs[1]:
@@ -786,17 +787,17 @@ with tab3:
                     "No scrape sessions recorded yet. Run a scrape to see history here."
                 )
             else:
-                st.dataframe(
-                    sessions_df,
-                    column_config={
-                        "date": st.column_config.DatetimeColumn("Date"),
-                        "leads_found": st.column_config.NumberColumn("New Leads"),
-                        "total_leads": st.column_config.NumberColumn("Total Leads"),
-                        "emails_found": st.column_config.NumberColumn("Emails Found"),
-                        "websites_found": st.column_config.NumberColumn("Websites"),
-                    },
-                    use_container_width=True,
-                )
+                 st.dataframe(
+                     sessions_df,
+                     column_config={
+                         "date": st.column_config.DatetimeColumn("Date"),
+                         "leads_found": st.column_config.NumberColumn("New Leads"),
+                         "total_leads": st.column_config.NumberColumn("Total Leads"),
+                         "emails_found": st.column_config.NumberColumn("Emails Found"),
+                         "websites_found": st.column_config.NumberColumn("Websites"),
+                     },
+                     width='stretch',
+                 )
                 st.caption(f"Total sessions: {len(sessions_df)}")
 
         # Export
