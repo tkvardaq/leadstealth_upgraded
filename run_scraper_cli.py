@@ -21,42 +21,39 @@ def main():
 
     leads_before = load_leads()
     count_before = len(leads_before)
-    scraper = LeadScraper(headful=args.headful)
     sources = [s.strip().lower() for s in args.sources.split(",")]
 
     try:
         leads_df = leads_before
 
-        if "google_maps" in sources:
+        for source in sources:
+            scraper = LeadScraper(headful=args.headful)
             try:
-                print("STATUS:Searching Google Maps...", flush=True)
-                leads_df = process_leads(
-                    leads_df,
-                    scraper.search_google_maps(args.query, args.location),
-                    scraper,
-                )
-            except Exception as e:
-                print(f"WARNING: Google Maps failed: {e}", flush=True)
-
-        if "yellowpages" in sources:
-            try:
-                print("STATUS:Searching Yellow Pages...", flush=True)
-                leads_df = process_leads(
-                    leads_df,
-                    scraper.search_yellowpages(args.query, args.location),
-                    scraper,
-                )
-            except Exception as e:
-                print(f"WARNING: Yellow Pages failed: {e}", flush=True)
-
-        if "yelp" in sources:
-            try:
-                print("STATUS:Searching Yelp...", flush=True)
-                leads_df = process_leads(
-                    leads_df, scraper.search_yelp(args.query, args.location), scraper
-                )
-            except Exception as e:
-                print(f"WARNING: Yelp failed: {e}", flush=True)
+                if source == "google_maps":
+                    print("STATUS:Searching Google Maps...", flush=True)
+                    leads_df = process_leads(
+                        leads_df,
+                        scraper.search_google_maps(args.query, args.location),
+                        scraper,
+                    )
+                elif source == "yellowpages":
+                    print("STATUS:Searching Yellow Pages...", flush=True)
+                    leads_df = process_leads(
+                        leads_df,
+                        scraper.search_yellowpages(args.query, args.location),
+                        scraper,
+                    )
+                elif source == "yelp":
+                    print("STATUS:Searching Yelp...", flush=True)
+                    leads_df = process_leads(
+                        leads_df,
+                        scraper.search_yelp(args.query, args.location),
+                        scraper,
+                    )
+                else:
+                    print(f"WARNING: Unknown source '{source}' skipped", flush=True)
+            finally:
+                scraper.close_browser()
 
         total = len(leads_df)
         new_leads = total - count_before
@@ -93,8 +90,6 @@ def main():
     except Exception as e:
         traceback.print_exc()
         print(f"ERROR:{e}", flush=True, file=sys.stderr)
-    finally:
-        scraper.close_browser()
 
 
 if __name__ == "__main__":
