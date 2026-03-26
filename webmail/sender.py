@@ -64,28 +64,28 @@ class WebmailSender:
         # Selectors for different webmail providers
         self.selectors = {
             'cpanel': {
-                'login_email': 'input[name="user"], input[id="user"], input[placeholder*="email" i]',
-                'login_pass': 'input[name="pass"], input[id="pass"], input[type="password"]',
-                'login_btn': 'button[type="submit"], input[type="submit"], button:has-text("Log in")',
-                'roundcube_link': 'a[href*="roundcube"], .menu-icon.roundcube, [title="RoundCube"]',
-                'compose_btn': 'a[href*="compose"], button.compose, #rcmbtn_compose, a:has-text("Compose")',
-                'to_field': 'input[name="_to"], #_to, input[placeholder*="To" i]',
+                'login_email': 'input[name="user"], input[id="user"], input[placeholder*="email" i], #user',
+                'login_pass': 'input[name="pass"], input[id="pass"], input[type="password"], #pass',
+                'login_btn': 'button[type="submit"], input[type="submit"], button:has-text("Log in"), #login_submit',
+                'roundcube_link': 'a[href*="roundcube"], .menu-icon.roundcube, [title="RoundCube"], .client-logo[alt="roundcube"]',
+                'compose_btn': 'a[href*="compose"], button.compose, #rcmbtn_compose, a:has-text("Compose"), [onclick*="compose"]',
+                'to_field': 'input[name="_to"], #_to, input[placeholder*="To" i], textarea[name="_to"]',
                 'subject_field': 'input[name="_subject"], #_subject, input[placeholder*="Subject" i]',
-                'body_frame': 'textarea[name="_message"], #_message, .mceEditor iframe, #composebody',
-                'send_btn': 'button[name="_send"], input[name="_send"], button:has-text("Send")',
-                'success_indicator': '.confirmation, .success, .alert-success, #message:has-text("sent")',
-                'logout_btn': 'a[href*="logout"], button.logout, a:has-text("Logout")'
+                'body_frame': 'textarea[name="_message"], #_message, .mceEditor iframe, #composebody, iframe[id*="composebody"]',
+                'send_btn': 'button[name="_send"], input[name="_send"], button:has-text("Send"), #rcmbtn_send, .button.send',
+                'success_indicator': '.confirmation, .success, .alert-success, #message:has-text("sent"), .messagemanager:has-text("sent")',
+                'logout_btn': 'a[href*="logout"], button.logout, a:has-text("Logout"), .logout-icon'
             },
             'roundcube': {
                 'login_user': 'input[name="_user"], #rcmloginuser',
                 'login_pass': 'input[name="_pass"], #rcmloginpwd',
                 'login_btn': '#rcmloginsubmit, button[type="submit"]',
-                'compose_btn': '#rcmbtn_compose, a.compose',
-                'to_field': '#compose_to, input[name="_to"]',
+                'compose_btn': '#rcmbtn_compose, a.compose, .button-compose',
+                'to_field': '#compose_to, input[name="_to"], textarea[name="_to"]',
                 'subject_field': '#compose_subject, input[name="_subject"]',
                 'body_field': '#composebody, textarea[name="_message"]',
-                'send_btn': '#rcmbtn_send, button.send, input[type="submit"][value="Send"]',
-                'success_msg': '.confirmation, .ui.alert-success'
+                'send_btn': '#rcmbtn_send, button.send, input[type="submit"][value="Send"], .button.send',
+                'success_msg': '.confirmation, .ui.alert-success, .messagemanager.confirmation'
             }
         }
     
@@ -511,7 +511,8 @@ class WebmailSender:
             'total': len(recipients),
             'sent': 0,
             'failed': 0,
-            'errors': []
+            'errors': [],
+            'details': [] # List of (email, success, error)
         }
         
         for i, recipient in enumerate(recipients):
@@ -527,7 +528,16 @@ class WebmailSender:
                 body_text=None
             )
             
-            if result['success']:
+            success = result['success']
+            results['details'].append({
+                'email': recipient['email'],
+                'success': success,
+                'error': result.get('error'),
+                'subject': subject,
+                'sent_at': datetime.now().isoformat()
+            })
+
+            if success:
                 results['sent'] += 1
             else:
                 results['failed'] += 1

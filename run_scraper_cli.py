@@ -8,10 +8,12 @@ import traceback
 from datetime import datetime
 from scraper import LeadScraper
 from processor import process_leads
-from db import load_leads, save_leads, save_session
+from database.service import service as db
 
 
-def main():
+import asyncio
+
+async def main():
     parser = argparse.ArgumentParser(description="LeadStealth Scraper CLI")
     parser.add_argument("--query", required=True, help="Niche / Category")
     parser.add_argument("--location", required=True, help="Location")
@@ -19,7 +21,7 @@ def main():
     parser.add_argument("--headful", action="store_true")
     args = parser.parse_args()
 
-    leads_before = load_leads()
+    leads_before = db.load_leads()
     count_before = len(leads_before)
     sources = [s.strip().lower() for s in args.sources.split(",")]
 
@@ -31,21 +33,21 @@ def main():
             try:
                 if source == "google_maps":
                     print("STATUS:Searching Google Maps...", flush=True)
-                    leads_df = process_leads(
+                    leads_df = await process_leads(
                         leads_df,
                         scraper.search_google_maps(args.query, args.location),
                         scraper,
                     )
                 elif source == "yellowpages":
                     print("STATUS:Searching Yellow Pages...", flush=True)
-                    leads_df = process_leads(
+                    leads_df = await process_leads(
                         leads_df,
                         scraper.search_yellowpages(args.query, args.location),
                         scraper,
                     )
                 elif source == "yelp":
                     print("STATUS:Searching Yelp...", flush=True)
-                    leads_df = process_leads(
+                    leads_df = await process_leads(
                         leads_df,
                         scraper.search_yelp(args.query, args.location),
                         scraper,
@@ -53,7 +55,7 @@ def main():
                 else:
                     print(f"WARNING: Unknown source '{source}' skipped", flush=True)
             finally:
-                scraper.close_browser()
+                await scraper.close_browser()
 
         total = len(leads_df)
         new_leads = total - count_before
@@ -67,7 +69,7 @@ def main():
         )
 
         # Save session history
-        save_session(
+        db.save_session(
             {
                 "session_id": datetime.now().strftime("%Y%m%d%H%M%S"),
                 "session_name": f"{args.query} in {args.location}",
@@ -93,4 +95,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.platform.startswith('win'):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    asyncio.run(main())

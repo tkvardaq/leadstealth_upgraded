@@ -7,13 +7,14 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, DateTime, Boolean, 
     Float, Text, ForeignKey, Index, event
 )
-from sqlalchemy.orm import declarative_base, relationship, Session
+from sqlalchemy.orm import DeclarativeBase, relationship, Session
 from sqlalchemy.pool import QueuePool
 from pydantic import BaseModel, Field
 import json
 import os
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 # ── Database Models ───────────────────────────────────────────
 
@@ -26,8 +27,23 @@ class Lead(Base):
     # Business Info
     name = Column(String(255), nullable=False, index=True)
     source = Column(String(50), nullable=False, index=True)  # google_maps, yellow_pages, yelp, etc.
-    category = Column(String(100), index=True)
-    location = Column(String(255), index=True)
+    category = Column(String(500), index=True)
+    
+    # Location Details
+    location = Column(String(500), index=True)
+    city = Column(String(100), index=True)
+    state = Column(String(100), index=True)
+    zip = Column(String(20), index=True)
+    address = Column(Text)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    
+    # Business Details
+    rating = Column(Float)
+    review_count = Column(Integer)
+    hours = Column(Text) # JSON
+    business_status = Column(String(100))
+    verified = Column(Boolean)
     
     # Contact Data
     website = Column(String(500))
@@ -41,11 +57,31 @@ class Lead(Base):
     instagram = Column(String(500))
     linkedin = Column(String(500))
     twitter = Column(String(500))
+    youtube = Column(String(500))
+    tiktok = Column(String(500))
+    pinterest = Column(String(500))
+    
+    # Tech Detection
+    cms = Column(String(100))
+    technologies = Column(Text) # Comma separated
+    wordpress = Column(Boolean)
+    shopify = Column(Boolean)
+    
+    # Content & Search
+    description = Column(Text)
+    services = Column(Text)
+    place_id = Column(String(255), index=True)
+    cid = Column(String(255))
+    google_maps_url = Column(String(500))
+    yelp_url = Column(String(500))
+    yellow_pages_url = Column(String(500))
     
     # Scraping Metadata
     scraped_at = Column(DateTime, default=datetime.utcnow)
     last_enriched = Column(DateTime)
     enrichment_count = Column(Integer, default=0)
+    source_url = Column(String(500))
+    session_id = Column(String(100), index=True)
     
     # Quality Scoring
     lead_score = Column(Float, default=0.0)  # 0-100 based on data completeness
@@ -112,7 +148,7 @@ class LeadActivity(Base):
     
     activity_type = Column(String(50), nullable=False)  # scraped, enriched, emailed, visited_website
     description = Column(Text)
-    metadata = Column(Text)  # JSON
+    activity_metadata = Column(Text)  # JSON
     created_at = Column(DateTime, default=datetime.utcnow)
     
     lead = relationship("Lead", back_populates="activities")
@@ -217,92 +253,7 @@ class CampaignCreate(BaseModel):
     emails_per_day: int = Field(default=50, ge=1, le=500)
 
 
-# ── Database Manager ─────────────────────────────────────────
-
-class DatabaseManager:
-    """Production database manager with connection pooling"""
-    
-    def __init__(self, db_path: str = "leadstealth.db"):
-        self.engine = create_engine(
-            f"sqlite:///{db_path}",
-            poolclass=QueuePool,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,
-            pool_recycle=3600
-        )
-        Base.metadata.create_all(self.engine)
-    
-    def get_session(self) -> Session:
-        return Session(self.engine)
-    
-    def get_leads_with_filters(
-        self,
-        source: Optional[str] = None,
-        category: Optional[str] = None,
-        location: Optional[str] = None,
-        has_email: Optional[bool] = None,
-        campaign_status: Optional[str] = None,
-        min_score: Optional[float] = None,
-        limit: int = 100
-    ):
-        """Get leads with advanced filtering"""
-        with self.get_session() as session:
-            query = session.query(Lead)
-            
-            if source:
-                query = query.filter(Lead.source == source)
-            if category:
-                query = query.filter(Lead.category.ilike(f"%{category}%"))
-            if location:
-                query = query.filter(Lead.location.ilike(f"%{location}%"))
-            if has_email is not None:
-                if has_email:
-                    query = query.filter(Lead.email.isnot(None))
-                else:
-                    query = query.filter(Lead.email.is_(None))
-            if campaign_status:
-                query = query.filter(Lead.campaign_status == campaign_status)
-            if min_score:
-                query = query.filter(Lead.lead_score >= min_score)
-            
-            return query.order_by(Lead.lead_score.desc()).limit(limit).all()
-    
-    def calculate_lead_score(self, lead: Lead) -> float:
-        """Calculate lead quality score 0-100"""
-        score = 0.0
-        
-        # Base points for having data
-        if lead.website: score += 15
-        if lead.phone: score += 10
-        if lead.email: score += 25
-        if lead.email_verified: score += 15
-        
-        # Social presence
-        social_count = sum([
-            bool(lead.facebook),
-            bool(lead.instagram),
-            bool(lead.linkedin),
-            bool(lead.twitter)
-        ])
-        score += social_count * 5
-        
-        # Email confidence
-        score += lead.email_confidence * 0.2
-        
-        return min(score, 100)
-    
-    def update_lead_score(self, lead_id: int):
-        """Recalculate and update lead score"""
-        with self.get_session() as session:
-            lead = session.get(Lead, lead_id)
-            if lead:
-                lead.lead_score = self.calculate_lead_score(lead)
-                session.commit()
-
-
-# Create singleton instance
-db = DatabaseManager()
+# Database Manager and singleton removed. Use database/service.py instead.
 
 
 # ── Event Listeners ──────────────────────────────────────────

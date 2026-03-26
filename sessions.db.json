@@ -22,5 +22,17 @@
     "total_leads": 116,
     "emails_found": 41,
     "websites_found": 108
+  },
+  {
+    "session_id": "20260327012249",
+    "session_name": "Plumbers in Austin, TX",
+    "date": "2026-03-27T01:22:49.931702",
+    "query": "Plumbers",
+    "location": "Austin, TX",
+    "sources": "google_maps",
+    "leads_found": 51,
+    "total_leads": 236,
+    "emails_found": 98,
+    "websites_found": 230
   }
 ]

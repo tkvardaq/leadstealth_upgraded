@@ -5,15 +5,148 @@ No SMTP costs - uses your HostFast hosting webmail
 
 import streamlit as st
 import pandas as pd
+import os
+import sys
+import json
+import time
 import asyncio
 import subprocess
-import sys
-import os
-import time
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-import json
+
+# Windows-specific fix for Playwright/Subprocess NotImplementedError
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+st.set_page_config(
+    page_title="LeadStealth CRM",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+CRM_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+    :root {
+        --bg-color: #0d1117;
+        --glass-bg: rgba(22, 27, 34, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --accent: #58a6ff;
+        --accent-glow: rgba(88, 166, 255, 0.4);
+        --success: #3fb950;
+        --warning: #d29922;
+        --error: #f85149;
+        --text-primary: #f0f6fc;
+        --text-secondary: #8b949e;
+    }
+
+    /* Global Transitions & Fonts */
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: 'Inter', sans-serif;
+        background: radial-gradient(circle at top right, #161b22, #0d1117);
+    }
+
+    h1, h2, h3 { font-family: 'Outfit', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+
+    /* Glass Panels */
+    div[data-testid="stMetric"], .crm-card, div[data-testid="stExpander"] {
+        background: var(--glass-bg) !important;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    .crm-card:hover {
+        transform: translateY(-5px);
+        border-color: var(--accent) !important;
+        box-shadow: 0 12px 40px 0 rgba(88, 166, 255, 0.15);
+    }
+
+    /* Custom Metric Display */
+    .metric-value {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        font-family: 'Outfit', sans-serif;
+        margin: 5px 0;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+
+    /* Sidebar Glassmorphism */
+    [data-testid="stSidebar"] {
+        background: rgba(1, 4, 9, 0.8) !important;
+        backdrop-filter: blur(20px);
+        border-right: 1px solid var(--glass-border);
+    }
+
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre;
+        background-color: transparent;
+        border-radius: 8px 8px 0 0;
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        color: var(--accent) !important;
+        border-bottom: 2px solid var(--accent) !important;
+    }
+
+    /* Inputs & Forms */
+    input, textarea, [data-baseweb="select"] {
+        background-color: rgba(0,0,0,0.2) !important;
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 8px !important;
+        color: white !important;
+    }
+
+    /* Buttons */
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #238636, #2ea043) !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.6rem 2rem !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 14px 0 rgba(46, 160, 67, 0.39) !important;
+    }
+    
+    button[kind="secondary"] {
+        background: rgba(255,255,255,0.05) !important;
+        border: 1px solid var(--glass-border) !important;
+    }
+
+    /* Custom Badges */
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        background: rgba(88, 166, 255, 0.1);
+        color: var(--accent);
+        border: 1px solid var(--accent);
+    }
+</style>
+"""
+
+st.markdown(CRM_CSS, unsafe_allow_html=True)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -37,14 +170,12 @@ def check_browser_install():
 
 
 # ── Database Functions ─────────────────────────────────────────
-
-from database_manager import DatabaseManager
-from db import get_sessions_df, save_session
+from database.service import service as db_service
 
 
 @st.cache_resource
 def get_db():
-    return DatabaseManager()
+    return db_service
 
 
 # ── Initialization ───────────────────────────────────────────
@@ -54,8 +185,8 @@ if "db_initialized" not in st.session_state:
 
 # ── Sidebar Setup ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("🛡️ LeadStealth")
-    st.write("Webmail Edition v2.1")
+    st.markdown("<h2 style='text-align: center; margin-bottom: 0;'>🛡️ LeadStealth</h2>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: center; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 30px;'>CRM Edition v3.0</div>", unsafe_allow_html=True)
 
     if is_cloud:
         if not st.session_state.browsers_installed:
@@ -86,13 +217,16 @@ with st.sidebar:
 
 
 def load_leads():
-    """Load leads from DB manager"""
-    return db.load_leads()
+    """Load leads from DB service"""
+    return get_db().load_leads()
 
 
 def save_leads(df):
-    """Save leads to DB manager"""
-    db.save_leads(df)
+    """Save leads to DB service (Migration/Batch update)"""
+    # In the new service, we usually add/update leads individually or via batch
+    # For compatibility with existing UI logic that might pass a whole DF:
+    for _, row in df.iterrows():
+        get_db().add_or_update_lead(row.to_dict())
 
 
 # ── Initialization ───────────────────────────────────────────
@@ -117,8 +251,8 @@ if "campaign_stats" not in st.session_state:
 # ── Sidebar: Webmail Configuration ──────────────────────────
 
 with st.sidebar:
-    st.header("📧 Webmail Setup")
-    st.info("Use your HostFast hosting webmail - it's FREE!")
+    st.markdown("### ⚙️ Integrations")
+    st.caption("HostFast Free Webmail")
 
     with st.expander(
         "➕ Add Webmail Account", expanded=len(st.session_state.webmail_accounts) == 0
@@ -186,150 +320,99 @@ tab1, tab2, tab3 = st.tabs(["🔍 Lead Scraping", "📧 Email Campaigns", "📊 
 # ── Tab 1: Lead Scraping ─────────────────────────────────────
 
 with tab1:
-    st.header("Find New Leads")
+    st.header("🔍 Lead Discovery")
+    
+    wizard_step = st.radio("Scrape Progress", ["1. Criteria", "2. Source Setup", "3. Extraction"], horizontal=True, label_visibility="collapsed")
+    st.divider()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        query = st.text_input(
-            "Business Category",
-            value="Plumbers",
-            help="e.g., Plumbers, Electricians, HVAC, Dentists",
-        )
-    with col2:
-        location = st.text_input(
-            "Location", value="Austin, TX", help="City, State or full address"
-        )
-
-    if not db.use_supabase:
-        st.warning(
-            "⚠️ **Warning: Local Storage Active**\n\nData will be lost when the app sleeps or restarts on Streamlit Cloud. Connect **Supabase** for permanent storage."
-        )
-        with st.expander("🛠️ How to connect Supabase (Fix Data Loss)"):
-            st.markdown("""
-            1. Create a free project at [supabase.com](https://supabase.com)
-            2. Run the SQL script I provided in their **SQL Editor**.
-            3. Go to **Settings > API** to get your URL and Anon Key.
-            4. In Streamlit Cloud, go to **Settings > Secrets** and add:
-            ```toml
-            SUPABASE_URL = "your-url"
-            SUPABASE_KEY = "your-anon-key"
-            ```
-            """)
-    else:
-        st.success("☁️ **Supabase Connected**: Your data is safe and persistent!")
-
-    col1, col2, col3 = st.columns([2, 2, 2])
-    with col1:
-        sources = st.multiselect(
-            "Sources",
-            ["Google Maps", "Yellow Pages", "Yelp"],
-            default=["Google Maps"],
-            help="Where to search for leads",
-        )
-    with col2:
-        max_leads = st.number_input(
-            "Max Leads",
-            value=50,
-            min_value=10,
-            max_value=500,
-            help="Stop after collecting this many leads",
-        )
-    with col3:
-        # Detect cloud to force headless
-        is_cloud = (
-            os.environ.get("STREAMLIT_SERVER_PORT") is not None
-            or os.environ.get("STREAMLIT_CLOUD_ID") is not None
-        )
-        if is_cloud:
-            headful = st.checkbox(
-                "Show Browser (Local Only)",
-                value=False,
-                disabled=True,
-                help="Visible browser windows are NOT supported in the cloud. Headless mode forced.",
-            )
-            headful = False  # Force false regardless of checkbox if on cloud
+    if wizard_step == "1. Criteria":
+        st.markdown("### 🎯 Target Audience")
+        col1, col2 = st.columns(2)
+        with col1:
+            query = st.text_input("Business Category", value="Plumbers", help="e.g., Plumbers, HVAC, Dentists", key="wiz_query")
+        with col2:
+            location = st.text_input("Location", value="Austin, TX", help="City or ZIP", key="wiz_loc")
+            
+        st.markdown("### ⚙️ Channel Selection")
+        sources = st.multiselect("Active Channels", ["Google Maps", "Yellow Pages", "Yelp"], default=["Google Maps"], key="wiz_sources")
+        st.info("💡 Pro Tip: Selecting multiple channels increases lead diversity.")
+        
+    elif wizard_step == "2. Source Setup":
+        st.markdown("### 🛠️ Advanced Parameters")
+        col1, col2 = st.columns(2)
+        with col1:
+            max_leads = st.number_input("Lead Limit", value=50, min_value=10, key="wiz_max")
+        with col2:
+            # Check cloud
+            is_cloud = os.environ.get("STREAMLIT_SERVER_PORT") is not None
+            headful = st.checkbox("Show Browser (Local Only)", value=not is_cloud, disabled=is_cloud, key="wiz_headful")
+            
+        if not get_db().use_supabase:
+            st.warning("⚠️ **Local Storage**: Data won't persist after restart. [Connect Supabase](https://supabase.com)")
+            
+    elif wizard_step == "3. Extraction":
+        st.markdown("### 🚀 Live Console")
+        
+        if st.session_state.scanning:
+            st.markdown(f"""
+            <div style="background: rgba(0,0,0,0.5); border: 1px solid var(--accent); border-radius: 8px; padding: 20px; font-family: monospace; color: var(--accent); margin-bottom: 20px;">
+                <span style="color: #666;">[SYSTEM]</span> INITIALIZING ENGINES...<br>
+                <span style="color: #666;">[SCRAPER]</span> TARGETING: <span style="color: #fff;">{st.session_state.get('wiz_query', 'Plumbers')}</span> IN <span style="color: #fff;">{st.session_state.get('wiz_loc', 'Austin, TX')}</span>...<br>
+                <span style="color: #666;">[STATUS]</span> <span style="color: var(--success);">{st.session_state.status_msg or 'Starting...'}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("🛑 Terminate Scrape", type="secondary"):
+                if st.session_state.process:
+                    st.session_state.process.terminate()
+                st.session_state.scanning = False
+                st.session_state.process = None
+                st.rerun()
         else:
-            headful = st.checkbox(
-                "Show Browser",
-                value=True,
-                help="Keep browser visible to solve CAPTCHAs manually (Local only)",
-            )
+            if st.button("⚡ Start New Extraction", type="primary", use_container_width=True):
+                # Build source list for CLI
+                source_map = {"Google Maps": "google_maps", "Yellow Pages": "yellowpages", "Yelp": "yelp"}
+                wiz_sources = st.session_state.get("wiz_sources", ["Google Maps"])
+                source_args = ",".join(source_map[s] for s in wiz_sources if s in source_map)
 
-    # Start scraping
-    if st.session_state.scanning:
-        st.warning("⏳ Scraping in progress...")
-        progress_bar = st.progress(0)
+                cmd = [
+                    sys.executable, 
+                    "run_scraper_cli.py", 
+                    "--query", st.session_state.get("wiz_query", "Plumbers"), 
+                    "--location", st.session_state.get("wiz_loc", "Austin, TX"), 
+                    "--sources", source_args
+                ]
+                if st.session_state.get("wiz_headful", True): cmd.append("--headful")
 
-        if st.button("🛑 Stop Scraping"):
-            if st.session_state.process:
-                st.session_state.process.terminate()
-            st.session_state.scanning = False
-            st.session_state.process = None
-            st.rerun()
-    else:
-        if st.button("🚀 Start Scraping", type="primary"):
-            # Build source list for CLI
-            source_map = {
-                "Google Maps": "google_maps",
-                "Yellow Pages": "yellowpages",
-                "Yelp": "yelp",
-            }
-            source_args = ",".join(source_map[s] for s in sources if s in source_map)
+                st.session_state.process = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, 
+                    cwd=os.path.dirname(os.path.abspath(__file__))
+                )
+                st.session_state.scanning = True
+                st.rerun()
 
-            cmd = [
-                sys.executable,
-                "run_scraper_cli.py",
-                "--query",
-                query,
-                "--location",
-                location,
-                "--sources",
-                source_args,
-            ]
-            if headful:
-                cmd.append("--headful")
+            if st.session_state.status_msg:
+                st.success(st.session_state.status_msg)
 
-            st.session_state.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-            )
-            st.session_state.scanning = True
-            st.rerun()
-
-    # Check process status
+    # Background process polling
     if st.session_state.scanning and st.session_state.process:
         retcode = st.session_state.process.poll()
-        st.session_state.leads_df = load_leads()
-
         if retcode is not None:
             st.session_state.scanning = False
             stdout, stderr = st.session_state.process.communicate()
-
-            # Parse status
             for line in stdout.strip().splitlines():
                 if line.startswith("STATUS:"):
                     st.session_state.status_msg = line.replace("STATUS:", "")
-
-            if stderr.strip():
-                st.error(f"Error: {stderr.strip()[:200]}")
-            else:
-                st.success(
-                    f"✓ Scraping complete! {len(st.session_state.leads_df)} total leads in database."
-                )
-
+            st.session_state.leads_df = load_leads()
             st.session_state.process = None
-
-    if st.session_state.status_msg:
-        st.info(st.session_state.status_msg)
+            st.rerun()
 
 
 # ── Tab 2: Email Campaigns ───────────────────────────────────
 
 with tab2:
-    st.header("Send Email Campaigns")
+    st.markdown("### ✉️ Campaign Manager")
+    st.markdown("<div style='margin-bottom: 20px;'>Design and dispatch email sequences directly from your integrated webmail profiles.</div>", unsafe_allow_html=True)
 
     if not st.session_state.webmail_accounts:
         st.error("⚠️ Please add at least one webmail account in the sidebar first!")
@@ -339,11 +422,11 @@ with tab2:
         # Load templates
         templates = WebmailTemplateLibrary.get_templates()
 
-        col1, col2 = st.columns(2)
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 1.2], gap="large")
 
         with col1:
-            st.subheader("🎯 Target Leads")
-
+            st.markdown("#### 👥 Filter Audience")
             # Filter options
             has_email = st.checkbox("Only leads with email", value=True)
 
@@ -416,8 +499,7 @@ with tab2:
                 st.dataframe(preview_df)
 
         with col2:
-            st.subheader("✉️ Email Template")
-
+            st.markdown("#### 📝 Compose Template")
             template_choice = st.selectbox(
                 "Choose Template",
                 list(templates.keys()),
@@ -452,9 +534,8 @@ with tab2:
                 st.caption(f"Preview subject: *{test_subj}*")
 
         # Campaign settings
-        st.divider()
-        st.subheader("⚙️ Campaign Settings")
-
+        st.markdown("<hr style='border-color: var(--border-color); margin: 30px 0;'>", unsafe_allow_html=True)
+        st.markdown("#### 🚀 Dispatch Settings")
         session_default = f"Campaign {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         session_name = st.text_input(
             "Session / Campaign Name",
@@ -537,39 +618,52 @@ with tab2:
                     await sender.close()
                     return results
 
-                # Run async
                 try:
                     if sys.platform == "win32":
-                        loop = asyncio.ProactorEventLoop()
-                        asyncio.set_event_loop(loop)
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
                         results = loop.run_until_complete(run_campaign())
-                        loop.close()
                     else:
                         results = asyncio.run(run_campaign())
                     st.session_state.campaign_stats = results
                     st.session_state.sending = False
 
-                    # Update lead statuses
-                    df = st.session_state.leads_df.copy()
+                    # Process detailed results
                     current_session_id = datetime.now().strftime("%Y%m%d%H%M%S")
-                    for i, (_, row) in enumerate(
-                        leads_filtered.head(max_to_send).iterrows()
-                    ):
-                        df.loc[df.index == row.name, "campaign_status"] = "Sent"
-                        df.loc[df.index == row.name, "last_contact"] = (
-                            datetime.now().isoformat()
-                        )
-                        df.loc[df.index == row.name, "session_id"] = current_session_id
-                        df.loc[df.index == row.name, "session_name"] = session_name
-                        count = df.loc[df.index == row.name, "contact_count"].values[0]
-                        df.loc[df.index == row.name, "contact_count"] = (
-                            1 if pd.isna(count) else count + 1
-                        )
-                    save_leads(df)
-                    st.session_state.leads_df = df
+                    details = results.get("details", [])
+                    
+                    for detail in details:
+                        # Find the lead ID from matches
+                        target_lead = leads_filtered[leads_filtered['email'] == detail['email']]
+                        if not target_lead.empty:
+                            lead_id = int(target_lead.iloc[0].get('id'))
+                            
+                            if detail['success']:
+                                # Record in DB
+                                get_db().record_email_sent(
+                                    lead_id=lead_id,
+                                    subject=detail['subject'],
+                                    body="", # Body not stored for privacy/space unless asked
+                                    status="sent"
+                                )
+                            else:
+                                # Log failure
+                                get_db().log_activity(
+                                    lead_id=lead_id,
+                                    activity_type="email_failed",
+                                    description=f"Failed to send email: {detail.get('error')}"
+                                )
+
+                    # Refresh local state
+                    st.session_state.leads_df = load_leads()
+                    st.session_state.campaign_stats = results
+                    st.session_state.sending = False
 
                     # Save campaign session to history
-                    save_session(
+                    get_db().save_session(
                         {
                             "session_id": current_session_id,
                             "session_name": session_name,
@@ -595,14 +689,15 @@ with tab2:
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total", stats["total"])
+                st.markdown(f'<div class="crm-card"><h3>Total Checked</h3><h2>{stats["total"]}</h2></div>', unsafe_allow_html=True)
             with col2:
-                st.metric("Sent", stats["sent"], delta=f"+{stats['sent']}")
+                st.markdown(f'<div class="crm-card"><h3>Emails Sent</h3><h2 style="color: var(--success);">{stats["sent"]}</h2></div>', unsafe_allow_html=True)
             with col3:
-                st.metric("Failed", stats["failed"])
+                fail_color = "#f85149" if stats["failed"] > 0 else "var(--text-primary)"
+                st.markdown(f'<div class="crm-card"><h3>Failed</h3><h2 style="color: {fail_color};">{stats["failed"]}</h2></div>', unsafe_allow_html=True)
 
-            if stats["errors"]:
-                with st.expander("❌ Errors"):
+            if stats.get("errors"):
+                with st.expander("❌ View Error Logs"):
                     for error in stats["errors"][:10]:
                         st.error(error)
 
@@ -617,22 +712,41 @@ with tab3:
     if df.empty:
         st.info("No leads yet. Go to the Lead Scraping tab to find some!")
     else:
-        # Stats
+        # Stats (Custom CRM Cards)
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Total Leads", len(df))
+            st.markdown(f'''
+                <div class="crm-card">
+                    <div class="metric-label">Total Leads</div>
+                    <div class="metric-value">{len(df)}</div>
+                </div>
+            ''', unsafe_allow_html=True)
         with col2:
             has_email = df["email"].notna().sum() if "email" in df.columns else 0
-            st.metric("With Email", has_email)
+            st.markdown(f'''
+                <div class="crm-card">
+                    <div class="metric-label">With Email</div>
+                    <div class="metric-value" style="color: var(--accent);">{has_email}</div>
+                </div>
+            ''', unsafe_allow_html=True)
         with col3:
             has_website = df["website"].notna().sum() if "website" in df.columns else 0
-            st.metric("With Website", has_website)
+            st.markdown(f'''
+                <div class="crm-card">
+                    <div class="metric-label">With Website</div>
+                    <div class="metric-value">{has_website}</div>
+                </div>
+            ''', unsafe_allow_html=True)
         with col4:
+            contacted = 0
             if "campaign_status" in df.columns:
-                contacted = df[df["campaign_status"].isin(["contacted", "Sent"])].shape[
-                    0
-                ]
-                st.metric("Sent/Contacted", contacted)
+                contacted = df[df["campaign_status"].isin(["contacted", "Sent"])].shape[0]
+            st.markdown(f'''
+                <div class="crm-card">
+                    <div class="metric-label">Sent/Contacted</div>
+                    <div class="metric-value" style="color: var(--success);">{contacted}</div>
+                </div>
+            ''', unsafe_allow_html=True)
 
         # Charts
         st.divider()
@@ -682,29 +796,88 @@ with tab3:
                     display_df["email"].isna() | (display_df["email"] == "")
                 ]
 
-            st.dataframe(
-                display_df,
-                column_config={
-                    "website": st.column_config.LinkColumn("Website"),
-                    "email": st.column_config.LinkColumn("Email"),
-                    "facebook": st.column_config.LinkColumn("Facebook"),
-                    "instagram": st.column_config.LinkColumn("Instagram"),
-                    "linkedin": st.column_config.LinkColumn("LinkedIn"),
-                    "twitter": st.column_config.LinkColumn("Twitter"),
-                    "yelp_url": st.column_config.LinkColumn("Yelp"),
-                    "campaign_status": st.column_config.TextColumn(
-                        "Status", help="Campaign Status"
-                    ),
-                    "rating": st.column_config.NumberColumn("Rating", format="%.1f"),
-                    "reviews": st.column_config.NumberColumn("Reviews"),
-                    "city": st.column_config.TextColumn("City"),
-                    "state": st.column_config.TextColumn("State"),
-                    "zip_code": st.column_config.TextColumn("Zip"),
-                    "category": st.column_config.TextColumn("Category"),
-                    "hours": st.column_config.TextColumn("Hours"),
-                },
-                width="stretch",
-            )
+            # Interactive Dataframe for CRM
+            try:
+                df_event = st.dataframe(
+                    display_df,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    column_config={
+                        "website": st.column_config.LinkColumn("Website"),
+                        "email": st.column_config.LinkColumn("Email"),
+                        "facebook": st.column_config.LinkColumn("Facebook"),
+                        "instagram": st.column_config.LinkColumn("Instagram"),
+                        "linkedin": st.column_config.LinkColumn("LinkedIn"),
+                        "twitter": st.column_config.LinkColumn("Twitter"),
+                        "yelp_url": st.column_config.LinkColumn("Yelp"),
+                        "campaign_status": st.column_config.TextColumn("Status"),
+                        "rating": st.column_config.NumberColumn("Rating", format="%.1f"),
+                        "review_count": st.column_config.NumberColumn("Reviews"),
+                    },
+                    width="stretch",
+                )
+                
+                # Render Lead Details if selected
+                selected_rows = []
+                if hasattr(df_event, "selection"):
+                    selected_rows = df_event.selection.rows
+                elif isinstance(df_event, dict):
+                    selected_rows = df_event.get("selection", {}).get("rows", [])
+                    
+                if selected_rows and len(selected_rows) > 0:
+                    st.markdown("<hr style='border-color: var(--border-color);'>", unsafe_allow_html=True)
+                    lead = display_df.iloc[selected_rows[0]]
+                    lead_id = int(lead.get('id'))
+                    
+                    st.markdown("### 🔍 Lead Details Profile")
+                    
+                    det1, det2, det3 = st.columns([2, 1, 1])
+                    with det1:
+                        st.markdown(f"**Name:** {lead.get('name', 'N/A')}")
+                        st.markdown(f"**Email:** {lead.get('email', 'N/A')}")
+                        st.markdown(f"**Phone:** {lead.get('phone', 'N/A')}")
+                        st.markdown(f"**Location:** {lead.get('city', '')}, {lead.get('state', '')}")
+                    with det2:
+                        st.markdown("**Technologies Detected**")
+                        if lead.get('wordpress'): st.markdown("✅ WordPress")
+                        if lead.get('shopify'): st.markdown("✅ Shopify")
+                        if lead.get('cms'): st.markdown(f"CMS: `{lead.get('cms')}`")
+                    with det3:
+                        st.markdown("**Pipeline Stage**")
+                        status_options = ["new", "contacted", "responded", "bounced", "converted"]
+                        current_status = lead.get("campaign_status", "new")
+                        if pd.isna(current_status): current_status = "new"
+                        
+                        try:
+                            new_status = st.selectbox("Update Status", status_options, index=status_options.index(current_status))
+                            if new_status != current_status:
+                                if db_service.update_lead_status(lead_id, new_status):
+                                    st.success(f"Status updated to {new_status}!")
+                                    st.rerun()
+                        except:
+                            st.markdown(f"<div class='badge'>{current_status}</div>", unsafe_allow_html=True)
+                    
+                    # Activity Timeline
+                    st.divider()
+                    st.markdown("#### 🕐 Activity History")
+                    activities = db_service.get_lead_activities(lead_id)
+                    
+                    if not activities:
+                        st.caption("No activity recorded for this lead yet.")
+                    else:
+                        for act in activities:
+                            icon = "📧" if "email" in act['type'] else "📝"
+                            with st.container():
+                                st.markdown(f"""
+                                <div style="border-left: 2px solid var(--accent); padding-left: 15px; margin-bottom: 10px;">
+                                    <span style="color: var(--text-secondary); font-size: 0.8rem;">{act['date']}</span><br>
+                                    <strong>{icon} {act['type'].replace('_', ' ').title()}</strong>: {act['description']}
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+            except Exception as e:
+                # Fallback for older streamlit versions without on_select
+                st.dataframe(display_df, width="stretch")
 
         with analytics_tabs[1]:
             st.subheader("Contacted Leads by Session")
@@ -781,23 +954,23 @@ with tab3:
 
         with analytics_tabs[3]:
             st.subheader("Scrape Session History")
-            sessions_df = get_sessions_df()
+            sessions_df = get_db().get_sessions_df()
             if sessions_df.empty:
                 st.info(
                     "No scrape sessions recorded yet. Run a scrape to see history here."
                 )
             else:
-                 st.dataframe(
-                     sessions_df,
-                     column_config={
-                         "date": st.column_config.DatetimeColumn("Date"),
-                         "leads_found": st.column_config.NumberColumn("New Leads"),
-                         "total_leads": st.column_config.NumberColumn("Total Leads"),
-                         "emails_found": st.column_config.NumberColumn("Emails Found"),
-                         "websites_found": st.column_config.NumberColumn("Websites"),
-                     },
-                     width='stretch',
-                 )
+                st.dataframe(
+                    sessions_df,
+                    column_config={
+                        "date": st.column_config.DatetimeColumn("Date"),
+                        "leads_found": st.column_config.NumberColumn("New Leads"),
+                        "total_leads": st.column_config.NumberColumn("Total Leads"),
+                        "emails_found": st.column_config.NumberColumn("Emails Found"),
+                        "websites_found": st.column_config.NumberColumn("Websites"),
+                    },
+                    width="stretch",
+                )
                 st.caption(f"Total sessions: {len(sessions_df)}")
 
         # Export
